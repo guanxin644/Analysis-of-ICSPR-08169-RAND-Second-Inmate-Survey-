@@ -1,0 +1,833 @@
+---
+title: "ICSPR_08169_ANA"
+author: "Guan Xin"
+format: html
+editor: visual
+output:
+  rmdformats::readthedown:
+    toc_depth: 6
+    self_contained: yes
+    thumbnails: yes
+    lightbox: yes
+    gallery: no
+    highlight: tango
+  prettydoc::html_pretty:
+    theme: cayman
+  html_document: default
+---
+
+# Prepare packages
+
+```{r}
+#theme pick
+library(rstudiothemes)
+library(rmdformats)
+library(prettydoc)
+
+#package for data_ana
+library(semTools)
+library(haven)
+library(tidyverse)
+library(dplyr)
+library(bruceR)
+library(summarytools)
+library(labelled)
+library(lm.beta)
+library(corrplot)
+library(lavaan)
+library(Gmisc)
+library(psych)
+library(parameters)
+library(GPArotation)
+library(finalfit)
+library(demoGraphic)
+library(vtable)
+library(gtsummary)
+library(janitor)
+
+#for path analysis
+library(devtools)
+library(lavaan)
+library(semPlot)
+library(OpenMx)
+library(knitr)
+library(kableExtra)
+library(GGally)
+library(simsem)
+library(remotes)
+library(tidySEM)
+library(ggplot2)
+```
+
+# SECTION 1 Data choose and recode
+
+Original data set include characters coding and all the data type are character. Data were recorded into integer, numeric or factor as required, as well as recorded the empty string and character into to NA or 0.
+
+## import original data
+
+```{r}
+# data was downloaded from ICSPR website and researcher convert the SAS data file into SAV file in the SAS cloud service first.
+imported <- read_spss("ICSPR_08169-0001-Data_original.sav")
+```
+
+## Select variables may needed and remove lables.
+
+```{r}
+used_var <- imported %>% 
+  select(D9J, D18J, CJ1, CK6E, 
+         CJ2,CJ3,CJ4A, CJ4B, CJ4C,CJ4D, CJ4E, CJ4F, CJ4G, CJ4H, CJ4I, CJ5, CK14I,
+         C28D, 
+         C9,C10,
+         CA1, CA5, CB1, CB5,CC1, CC5, CF1, CF5,CG1, CG5,CH1, CH5,CI1,CI5, 
+         B1A, B1B, B1C, B1D, B1E, B1F, B1G, B1H, B1I, B1J, B1K, B1L, B1M, B1N, B1O, B1P, 
+         B2A, B2B, B2C, B2D, B2E, B2F, B2G, B2H, B2I, B2J, B2K, B2L, B2M, B2N, B2O, B3, B4, 
+         B5A, B5B, B5C, B5D, B5E, B5F, B5G, B5H, B5I, B5J, B5K, B5L, B5M, B5N, B5O, B6, B7, 
+         B8, 
+         B9, B10, B11, CK8, CK8A,
+         CA7, CB6, CC6, 
+         CK9A, CK10, 
+         CD1, CD2, CD3A, CD3B, CD3C, CD3D, CD3E, CD4, CD4A,
+         CE1, CE2, CE3, CE4, CE5, CE7, CE7A,
+         CK5, CK5A, CK5B, CK5C, CK5D, CK5E, CK5F, CK5G, CK5H, CK5I, CK5J, CK5K, CK5L,
+         E1,E2,E3,E4,E5,D7,D16, C17,
+         C23,C24,
+         CK2,CK3,
+         A14,A15,A17,
+         CK12YR, CK12MO, CK13YR, CK13MO,
+         CK14A, CK14B, CK14C, CK14D, CK14E, CK14F, CK14G, CK14H, CK14I,
+         CA4A,CA4D,CA4F,CA4H,
+         CB4A,CB4D,CB4F,CB4H,
+         CF4A,CF4D,CF4F,CF4H,
+         CG4A,CG4D,CG4F,CG4H,
+         CH4A,CH4D,CH4F,CH4H,
+         CI4A,CI4D,CI4F,CI4H)
+
+used_var <- used_var %>% 
+  remove_labels()
+```
+
+## Select the drug dealer sample
+
+```{r}
+win3_sp <- used_var %>% 
+  mutate(CJ1 = ifelse(CJ1 %in% c("1","3"), 2,
+                      ifelse(CJ1 %in% c("2","4"),1, NA))) %>% 
+  mutate(across(c(CJ1), as.integer)) %>% 
+  filter(CJ1 == 2)
+```
+
+## Continuity in drug dealing during window period 1 to 3
+
+```{r}
+win3_w1w2_sp <- win3_sp %>% 
+  mutate(continuity_drcr = ifelse(D18J == "1" & D9J == "1", 3,
+                             ifelse(D18J != "1" & D9J == "1", 2, 
+                                    ifelse(D18J == "1" & D9J != "1", 2,
+                                           ifelse(D18J != "1" & D9J != "1", 1,0)))))
+
+```
+
+## No. and frequency of offence for each type crime
+
+```{r}
+#No. of offence for each type crime
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CK14A, CK14B, CK14C, CK14D, CK14E, CK14F, CK14G, CK14H, CK14I), 
+                ~ ifelse(.x=="0",0,
+                         ifelse(.x == "1",1,
+                                   ifelse(.x == "2",2,
+                                          ifelse(.x == "3",3,
+                                                 ifelse(.x == "4",4,NA)))))))
+
+
+# Frequency of offence for each type crime
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CJ4A,CJ4D,CJ4F,CJ4H,#drug dealing
+                  CA4A,CA4D,CA4F,CA4H,#bur
+                  CB4A,CB4D,CB4F,CB4H,#rob
+                  CF4A,CF4D,CF4F,CF4H,#tef
+                  CG4A,CG4D,CG4F,CG4H,#car
+                  CH4A,CH4D,CH4F,CH4H,#for
+                  CI4A,CI4D,CI4F,CI4H),#swi
+                ~ ifelse(.x == "1",1,0))) %>% 
+  mutate(drug_freq = ifelse(CJ4A == 1,4,
+                           ifelse(CJ4D == 1,3,
+                                  ifelse(CJ4F ==1, 2,
+                                         ifelse(CJ4H==1, 1, 0))))) %>%
+  mutate(bur_freq = ifelse(CA4A == 1,4,
+                           ifelse(CA4D == 1,3,
+                                  ifelse(CA4F ==1, 2,
+                                         ifelse(CA4H==1, 1, 0))))) %>% 
+  mutate(rob_freq = ifelse(CB4A == 1,4,
+                           ifelse(CB4D == 1,3,
+                                  ifelse(CB4F ==1, 2,
+                                         ifelse(CB4H==1, 1, 0))))) %>% 
+  mutate(tef_freq = ifelse(CF4A == 1,4,
+                           ifelse(CF4D == 1,3,
+                                  ifelse(CF4F ==1, 2,
+                                         ifelse(CF4H==1, 1, 0))))) %>% 
+  mutate(car_freq = ifelse(CG4A == 1,4,
+                           ifelse(CG4D == 1,3,
+                                  ifelse(CG4F ==1, 2,
+                                         ifelse(CG4H==1, 1, 0))))) %>% 
+  mutate(for_freq = ifelse(CH4A == 1,4,
+                           ifelse(CH4D == 1,3,
+                                  ifelse(CH4F ==1, 2,
+                                         ifelse(CH4H==1, 1, 0))))) %>% 
+  mutate(swi_freq = ifelse(CI4A == 1,4,
+                           ifelse(CI4D == 1,3,
+                                  ifelse(CI4F ==1, 2,
+                                         ifelse(CI4H==1, 1, 0)))))
+```
+
+## Drug dealer identity
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(C28D = ifelse(C28D == "1",1,
+                       ifelse(C28D == "0",0,NA))) %>% 
+  mutate(across(c(C28D), as.numeric))
+```
+
+## Length of window period 3 (WP3)
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(C9), as.integer)) %>% 
+  mutate(set_length = C9 + 1) %>% 
+  mutate(set_length_ran = ifelse(set_length>=1 & set_length<=6,1,
+                                        ifelse(set_length>=7 & set_length<=12,2,
+                                               ifelse(set_length>=13 & set_length<=18,3,
+                                                      ifelse(set_length>=19,4,NA)))))
+```
+
+## No. of crime types
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CA1, CB1,CC1,CF1,CG1,CH1, CI1), 
+                ~ ifelse(.x %in% c("2","4"), 0,
+                         ifelse(.x %in% c("1","3"), 1, NA))))
+```
+
+## No. of arrest for drug dealing
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CJ5), ~ recode(.x, "AB"="1.5", "MM"=""))) %>% 
+  mutate(across(c(CJ5), as.numeric))
+```
+
+## Criminal subjective and psychological information
+
+```{r}
+
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  as_tibble() %>% 
+  mutate(across(c(B1A, B1B, B1C, B1D, B1E, B1F,B1G, B1H, B1I, B1J, B1K, B1L, B1M, B1N, B1O, B1P), 
+                ~ recode(.x, "T"="","1"="4", "2"="3", "3"="2","4"="1"))) %>% 
+  haven::zap_labels() %>% 
+ mutate(across(c(B1A, B1B, B1C, B1D, B1E, B1F,B1G, B1H, B1I, B1J, B1K, B1L, B1M, B1N, B1O, B1P), as.numeric))
+```
+
+## Perceived crime benefit and cost from crime activity and non-crime activity
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>%
+  mutate(across(c(starts_with("B2"), starts_with("B5")),
+              ~ ifelse(.x == "1",1,
+                       ifelse(.x == "2",2,
+                              ifelse(.x=="3",3,
+                                     ifelse(.x=="4",4,
+                                            ifelse(.x=="5",5,NA))))))) %>% 
+  mutate(across(c(B3,B4,B6, B7),
+              ~ ifelse(.x == "1",5,
+                       ifelse(.x == "2",4,
+                              ifelse(.x=="3",3,
+                                     ifelse(.x=="4",2,
+                                            ifelse(.x=="5",1,NA)))))))
+```
+
+## Criminal self-efficacy
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>%
+  mutate(B8 = ifelse(B8 == "1",4,
+                     ifelse(B8 == "2", 3,
+                            ifelse(B8 == "3", 2,
+                                   ifelse(B8 == "4",1,NA)))))
+```
+
+## Arrest avoidance
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(CK8 = ifelse(CK8 == 1, 1,
+                      ifelse(CK8 == 2 | CK8 == 4, 2, NA))) %>%
+  haven::zap_labels() %>% 
+  mutate(across(c(B9, B10, B11, CK8), as.integer)) #1= cannot avoid，2= can avoid
+
+```
+
+## Tools bringing in non-violent property crime
+
+```{r}
+
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CA7, CB6, CC6),
+                ~ recode(.x, "M"=""))) %>% 
+  mutate(across(c(CK9A, CK10),
+                ~ recode(.x, "T"=""))) %>% 
+  mutate(across(c(CA7, CB6, CC6, CK9A, CK10),as.integer))
+
+win3_w1w2_sp <- win3_w1w2_sp %>% mutate(across(c(CK9A, CK10),
+               ~ ifelse(.x == 1, 1,
+                       ifelse(.x == 2 | .x == 4, 2, NA))))
+```
+
+## Hurting others in non-violent property crime
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(CD1 = ifelse(CD1 %in% c("2","4"), 0, 
+                      ifelse(CD1 %in% c("1","3"), 1, NA))) %>%
+  mutate(across(c(CD2), as.integer)) %>% 
+  mutate(across(c(CD3A),
+                ~ ifelse(.x == "1",1,
+                         ifelse(.x == "M", NA, 2)))) %>% 
+  mutate(across(c(CD4),
+                ~ ifelse(.x == "1",2,
+                         ifelse(.x=="2", 1, NA))))
+```
+
+## Hurting others in violent crime
+
+```{r}
+
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CE5, CE7),
+                ~ recode(.x, "M"=""))) %>% 
+  mutate(CE7 = ifelse(CE7 %in% c("2","4"), 1, 
+                      ifelse(CE7 %in% c("1", "3"), 2, NA))) %>% 
+  mutate(CE1 = ifelse(CE1 %in% c("2","4"), 0, 
+                      ifelse(CE1 %in% c("1","3"), 1, NA))) %>%
+  mutate(across(c(CE4), ~ recode(.x, "MM"=""))) %>% 
+  mutate(across(c(CE7A), ~ recode(.x, "YY"=""))) %>% 
+  mutate(across(c(CE2, CE3, CE7A), ~ recode(.x, "94"="3", "96"="10"))) %>% 
+  mutate(across(c(CE1, CE2, CE3, CE4, CE5, CE7, CE7A), as.integer))
+
+```
+
+## Crime strategy in property crime
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CK5A, CK5B, CK5C, CK5D, CK5E, CK5F, CK5G, CK5H, CK5I, CK5J, CK5K, CK5L), 
+                ~recode(.x, "Y"="","T"=""))) %>% 
+  mutate(CK5 = ifelse(CK5 %in% c("1","4"), 2,
+                      ifelse(CK5 %in% c("2","3"), 1, NA))) %>% 
+  mutate(across(c(CK5, CK5A, CK5B, CK5C, CK5D, CK5E, CK5F, CK5G, CK5H, CK5I, CK5J, CK5K, CK5L), as.integer)) %>% 
+  mutate(across(c(CK5A, CK5B, CK5C, CK5D, CK5E, CK5F, CK5G, CK5H, CK5I, CK5J, CK5K, CK5L), 
+                ~ replace_na(.x, 0))) %>% 
+  mutate(across(c(CK5), factor))
+
+```
+
+## Charges of drug dealing for current incaceration
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(CK6E = ifelse(CK6E=="0",0,
+                       ifelse(CK6E=="1",1,NA)))
+```
+
+## Demographic variables
+
+### Age, race, education, marriage
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(E1, E2, E3, E4),
+                ~ recode(.x, "T"=""))) %>% 
+  mutate(across(c(E1,E2,E4,E3), as.integer)) %>% 
+  mutate(across(c(E2,E4), factor)) %>% 
+  mutate(E2_bina = ifelse(E2=="5", 1, 0)) %>% 
+  mutate(E4_bina = ifelse(E4=="1", 1, 0))
+
+```
+
+### Drug use in WP3
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(C23),
+                ~ ifelse(C23 %in% c("2","4"),"1",
+                        ifelse(C23 %in% c("1","3"),"2","")))) %>% 
+  mutate(across(c(C23),as.integer)) %>% 
+  mutate(across(c(C24),
+                ~ recode(.x, "0"=0,"5"=1,"4"=2,"3"=3,"2"=4,"1"=5)))
+
+```
+
+### Crime income
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(CK2),
+                ~ recode(.x, "T"=""))) %>% 
+  mutate(across(c(CK3),
+                ~ recode(.x, "9996"="", "9998"=""))) %>% 
+  mutate(across(c(CK2,CK3), as.numeric)) 
+
+```
+
+### Length of sentence for current incarceration
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(A14, A15, A17),
+                ~ recode(.x, "T"=""))) %>% 
+  mutate(across(c(A14, A15, A17, CK12YR,CK12MO,CK13YR,CK13MO), as.numeric)) %>% 
+  mutate(serve_sen = CK12YR*12+CK12MO, na.rm=TRUE) %>% 
+  mutate(left_sen = CK13YR*12+CK13MO, na.rm=TRUE)
+
+```
+
+### Enployment during WP1, WP2, WP3
+
+```{r}
+win3_w1w2_sp <- win3_w1w2_sp %>% 
+  mutate(across(c(C17), ~recode(.x, "T"=""))) %>% 
+  mutate(across(c(C17, D7, D16),as.integer)) %>% 
+  mutate(across(c(C17, D7, D16), ~ recode(.x, "2"=1,"1"=2)))
+
+```
+
+# SECTION 2 Compute measures needed
+
+## Cronbach alpha for each measurement
+
+```{r}
+
+cr_thinking_scale <- win3_w1w2_sp %>% 
+  select(B1A, B1C, B1D,B1E, B1I, B1J, B1M, B1N, B1O, B1P)
+alpha(cr_thinking_scale, check.keys=TRUE)
+
+perce_cr_benefit_scale <- win3_w1w2_sp %>% 
+  select(B2A, B2C, B2E, B2G,B2I,B2K,B2M, B2O)
+alpha(perce_cr_benefit_scale, check.keys=TRUE)
+
+perce_ncr_cost_scale <- win3_w1w2_sp %>% 
+  select(B5F, B5H, B5J, B5N) 
+alpha(perce_ncr_cost_scale, check.keys=TRUE)
+
+cr_strategy_scale <- win3_w1w2_sp %>% 
+  select(CK5A, CK5B, CK5C, CK5E, CK5F, CK5G, CK5H, CK5I, CK5J, CK5K, CK5L)
+alpha(cr_strategy_scale, check.keys=TRUE)
+
+```
+
+## Select items and compute for each variable
+
+```{r}
+# select items for each variable
+nonvio_crime_diverse <- c("CA1","CB1","CC1","CF1","CG1","CH1", "CI1")
+vio_crime_diverse <- c("CD1","CE1")
+crime_diverse <- c("CA1","CB1","CC1","CD1","CE1","CF1","CG1","CH1", "CI1")
+criminal_thinking <- c("B1A", "B1C","B1D", "B1E","B1I", "B1J","B1M", "B1N", "B1O", "B1P")
+perceived_benefit_cr <- c("B2A", "B2C", "B2E", "B2G","B2I","B2K","B2M", "B2O")
+perceived_cost_cr <- c("B2B", "B2D", "B2F", "B2H", "B2J", "B2L", "B2N")
+perceived_benefit_noncr <- c("B5A", "B5C", "B5E", "B5G","B5I","B5K","B5M", "B5O")
+perceived_cost_noncr <- c("B5F", "B5H", "B5J", "B5N")
+crime_strategy <- c("CK5A", "CK5B", "CK5C", "CK5E", "CK5F", "CK5G", "CK5H", "CK5I", "CK5J", "CK5K", "CK5L")
+
+# compute each variable by sum or mean
+var_compute <- win3_w1w2_sp %>% 
+  mutate(nviocr_diver = rowSums(select_at(., nonvio_crime_diverse),na.rm = TRUE)) %>% 
+  mutate(viocr_diver = rowSums(select_at(., vio_crime_diverse),na.rm = TRUE)) %>% 
+  mutate(cr_diver = rowSums(select_at(., crime_diverse),na.rm = TRUE)) %>% 
+  mutate(cr_thinking = rowMeans(select_at(., criminal_thinking),na.rm = TRUE)) %>%
+  mutate(perce_cr_benefit = rowSums(select_at(., perceived_benefit_cr), na.rm = TRUE)) %>% 
+  mutate(perce_cr_cost = rowSums(select_at(., perceived_cost_cr), na.rm = TRUE)) %>% 
+  mutate(perce_ncr_benefit = rowSums(select_at(., perceived_benefit_noncr), na.rm = TRUE)) %>% 
+  mutate(perce_ncr_cost = rowSums(select_at(., perceived_cost_noncr), na.rm = TRUE)) %>% 
+  mutate(cr_strategy = rowMeans(select_at(., crime_strategy), na.rm = TRUE))
+
+```
+
+## Table 1. Demographic statictics for drug dealer sample
+
+```{r}
+
+demo_data <- var_compute %>% 
+  select(E1,#age
+         E2,#race
+         E3,#education
+         E4,#married
+         continuity_drcr, drug_freq, C28D,CK6E, CJ5, #related to drug dealing
+         cr_diver,nviocr_diver, viocr_diver, #related to the crime types
+         set_length) %>%
+  mutate(across(c(E3, continuity_drcr, C28D, CK6E), factor)) %>% 
+  mutate(E2 = recode(E2,
+                     `1` = "Asian",
+                     `2` = "Black",
+                     `3` = "Chicano/Latino",
+                     `4` = "Indian/Native American",
+                     `5` = "White",
+                     `6` = "Other")) %>% 
+  mutate(E3 = recode(E3,
+                     `0` = "No schooling",
+                     `1` = "6th grade or less",
+                     `2` = "7th - 9th grade",
+                     `3` = "10th - 11th grade",
+                     `4` = "High school grade",
+                     `5` = "Some college",
+                     `6` = "College graduate",
+                     `7` = "Post graduate study")) %>% 
+  mutate(E4 = recode(E4,
+                     `1` = "Married",
+                     `2` = "Widowed",
+                     `3` = "Divorced",
+                     `4` = "Separated",
+                     `5` = "Never married")) %>% 
+  mutate(continuity_drcr = recode(continuity_drcr,
+                                `1` = "commited drug crime in WP3 only",
+                                `2` = "commited drug crime in WP3 and WP2 or WP1",
+                                `3` = "commited drug crime in WP3, WP2 and WP1")) %>% 
+  mutate(C28D = recode(C28D,`0` = "No", `1` = "Yes")) %>% 
+  mutate(CK6E = recode(CK6E,`0` = "No", `1` = "Yes"))
+
+#demo_table <- tbl_summary(demo_data,
+ #                         statistic = list(all_continuous() ~ "{mean} ({sd}) {min}, {max}, {median} ({p25}, {p75})", 
+  #                                         all_categorical() ~ "{n} / {N} ({p}%)"),
+   #                       digits = all_continuous() ~ 2,
+    #                      label = list(E1 ~ "Age",
+     #                                  E2 ~ "Race",
+      #                                 E3 ~ "Education",
+       #                                E4 ~ "Marrige",
+        #                               continuity_drcr ~ "Continuity on drug dealing",
+         #                              drug_freq ~ "Frequency of drug dealing",
+          #                             C28D ~ "Drug dealer identity",
+           #                            CK6E ~  "Incaceration for drug dealing",
+            #                           CJ5 ~ "No. of arrested for drug dealing",
+             #                          cr_diver ~ "No. of types of crime commited",
+              #                         nviocr_diver ~ "No. of types of property crime commited" ,
+               #                        viocr_diver ~ "No. of types of violent crime commited",
+                #                       set_length ~ "Length of WP3 (month)"),
+                 #         missing_text = "(Missing)")
+demo_table         
+labs <- c("Age","Race", "Education","Marrige","Experience in drug dealing","Frequency of drug dealing","Self-identity as a drug dealer","Current incaceration for drug dealing","No. of arrest for drug dealing","No. of crime types","No. of property crime types" ,"No. of violent crime types","Length of WP3 (month)")
+table_1 <- sumtable(demo_data, labels = labs)  # Table 1  
+
+```
+
+# SECTION 3 Descriptive statistics and correlation of 6 main variables
+
+### Table 2.Descriptive statistics and correlation of 6 main variables
+
+```{r}
+# Descriptive statistics 6 main variables
+options(digits=2)
+
+library(expss)
+samcor_main <- var_compute %>% 
+  select(perce_cr_benefit, cr_thinking, B9, B8, CK8, cr_strategy) %>% 
+  rename("PCB" = perce_cr_benefit, 
+         "CT" = cr_thinking, 
+         "FO" = B9,
+         "CSE" = B8,
+         "AA" = CK8,
+         "CS" = cr_strategy)
+Variable <- c("PCB","CT", "FO" ,"CSE", "AA","CS")
+
+
+samcor_main_demo <- samcor_main %>% 
+  descr(stats = c("n.valid","mean", "sd", "min", "q1", "med", "q3", "max", "skewness", "kurtosis"),
+        transpose = TRUE,
+        order = "preserve")
+samcor_main_demo
+
+# Correlation of 6 main variables
+library(rstatix)
+
+cmat_main <- samcor_main %>% 
+  cor_mat() %>% 
+  pull_upper_triangle()
+cmat_main_sig <- cor_mark_significant(cmat_main,
+                                 cutpoints = c(0, 0.001, 0.01, 0.05, 1),
+                                 symbols = c("***", "**", "*", ""))
+
+# Table output for descriptive statistics and correlation of 6 main variables
+library(gt)
+demo_cor_main <- cbind(samcor_main_demo, cmat_main_sig)[,-12] %>% 
+  gt() %>% 
+  tab_header("Table 2. Descriptive Statistics and Correlations for the 6 Variables From the Current Study.") %>% 
+  tab_spanner(
+    label = "Descriptive Statistics",
+    columns = c(N.Valid,Mean, Std.Dev, Min, Q1,Median, Q3, Max, Skewness, Kurtosis)) %>% 
+  tab_spanner(label = "Correlation",
+    columns = c(CT, FO, CSE, AA, CS)) %>% 
+  opt_align_table_header(align = "left") %>% 
+  fmt_number(columns = c(2:11)) %>% 
+  opt_table_font(font = google_font(name = "Times New Roman"), ) %>% 
+  tab_footnote(footnote = "***p<0.001, **p<0.01, *p<0.05") %>% 
+  tab_footnote(footnote = md("_Note_. PCB = Perceived crime benefit, CT = Criminal thinking, FO = Future offending, CES = Criminal self-efficacy, AA = Arrest avoidance, CS = Crime strategy")) %>% 
+  tab_options(table.font.size = px(12)) %>%
+  gtsave(filename = "table_2.rtf")
+
+```
+
+# SECTION 4 Missing data imputation
+
+```{r}
+sample_memo <- var_compute %>% 
+  select(E2_bina,E4_bina, CK6E, C17, D7, D16,
+      set_length_ran,C28D,CJ5,perce_ncr_benefit, perce_cr_cost, continuity_drcr,
+      drug_freq, bur_freq,rob_freq,tef_freq,car_freq,for_freq,swi_freq, viocr_diver,
+      E1,E3,C23,CK2,left_sen, serve_sen,
+      CK14A, CK14B, CK14C, CK14D, CK14E, CK14F, CK14G, CK14H, CK14I,
+      perce_cr_benefit, cr_thinking, B9, B8, CK8, cr_strategy)
+
+no_missing <- sample_memo
+summary(no_missing)
+
+percent_missing <- function(x){sum(is.na(x))/length(x) * 100}
+missing <- apply(no_missing, 1, percent_missing) 
+table(missing)  
+
+replace_rows <- subset(no_missing, missing <= 5)  
+
+no_rows <- subset(no_missing, missing > 5) 
+
+missing <- apply(replace_rows, 2, percent_missing) 
+table(missing)
+replace_columns <- replace_rows[ ,7:41] 
+no_columns <- replace_rows[ ,1:6] 
+
+library(mice)  
+tempnomiss <- mice(replace_columns, seed=654321)
+class(tempnomiss)
+fixed_columns <- complete(tempnomiss) 
+all_columns <- cbind(no_columns, fixed_columns) 
+all_rows <- rbind(all_columns, no_rows)      
+nrow(no_missing)
+nrow(all_rows)
+
+```
+
+## Data preparation for mediation and moderation anlaysis
+
+```{r}
+# The total drug dealer sample
+memo_data <- all_rows
+
+# The subset of total drug dealer sample (who only committed drug dealing in WP3)
+memo1_data <- all_rows %>% 
+  filter(continuity_drcr==1)
+
+# The subset of total drug dealer sample (who committed drug dealing at least 2 WPs of 3 WPs)
+memo2_data <- all_rows %>% 
+  filter(continuity_drcr>1)
+```
+
+# SECTION 5 Model analysis
+
+## Mediation analysis using PROCESS
+
+### perce_cr_benefit -\> cr_thinking -\> future offending
+
+```{r}
+process(data = memo_data,
+y="B9",
+x="perce_cr_benefit",
+m=c("cr_thinking"),
+cov=c("set_length_ran","C28D","CJ5","perce_cr_cost", "perce_ncr_benefit","continuity_drcr",
+      "drug_freq", "CK6E", "viocr_diver",
+      "bur_freq","rob_freq","tef_freq","car_freq","for_freq","swi_freq",
+      "E1","E3","E2_bina","E4_bina", "C17", "D7", "D16","C23","CK2","left_sen", "serve_sen",
+      "CK14A", "CK14B", "CK14C", "CK14D", "CK14E", "CK14F", "CK14G", "CK14H", "CK14I"),
+model = 4,
+center=2,
+moments=1,
+modelbt=1,
+boot=1000,
+bc=1,
+seed=654321,
+jn=1,
+plot = 1)
+
+```
+
+### perce_cr_benefit -\> cr_thinking -\> criminal self-efficacy
+
+```{r}
+process(data = memo_data,
+y="B8",
+x="perce_cr_benefit",
+m=c("cr_thinking"),
+cov=c("set_length_ran","C28D","CJ5","perce_cr_cost", "perce_ncr_benefit", "continuity_drcr",
+      "drug_freq", "CK6E", "viocr_diver",
+      "bur_freq","rob_freq","tef_freq","car_freq","for_freq","swi_freq",
+      "E1","E3","E2_bina","E4_bina","C17", "D7", "D16", "C23","CK2","left_sen", "serve_sen",
+      "CK14A", "CK14B", "CK14C", "CK14D", "CK14E", "CK14F", "CK14G", "CK14H", "CK14I"),
+model = 4,
+center=2,
+moments=1,
+modelbt=1,
+boot=1000,
+bc=1,
+seed=654321,
+jn=1)
+```
+
+### perce_cr_benefit -\> cr_thinking -\> criminal self-efficacy -\> arrest avoidance
+
+```{r}
+process(data = memo_data,
+y="CK8",
+x="perce_cr_benefit",
+m=c("cr_thinking", "B8"),
+cov=c("set_length_ran","C28D","CJ5","perce_ncr_benefit", "perce_cr_cost","continuity_drcr",
+      "drug_freq", "CK6E", "viocr_diver",
+      "bur_freq","rob_freq","tef_freq","car_freq","for_freq","swi_freq",
+      "E1","E3","E2_bina","E4_bina","C17", "D7", "D16", "C23","CK2","left_sen", "serve_sen",
+      "CK14A", "CK14B", "CK14C", "CK14D", "CK14E", "CK14F", "CK14G", "CK14H", "CK14I"),
+bmatrix=c(1,0,1,1,0,1),
+center=2,
+moments=1,
+modelbt=1,
+boot=1000,
+bc=1,
+seed=654321,
+jn=1)
+```
+
+## Moderated mediation analysis using PROCESS
+
+### perce_cr_benefit -\> cr_thinking -\> future offending with crime strategy moderate the path through perce_cr_benefit -\> cr_thinking
+
+```{r}
+process(data = memo_data, #memo_data1,memo_data2
+y="B9",
+x="perce_cr_benefit",
+m=c("cr_thinking"),
+w="cr_strategy",
+cov=c("set_length_ran","C28D","CJ5","perce_cr_cost", "perce_ncr_benefit","continuity_drcr",
+      "drug_freq", "CK6E", "viocr_diver",
+      "bur_freq","rob_freq","tef_freq","car_freq","for_freq","swi_freq",
+      "E1","E3","E2_bina","E4_bina", "C17", "D7", "D16", "C23","CK2","left_sen", "serve_sen", 
+      "CK14A", "CK14B", "CK14C", "CK14D", "CK14E", "CK14F", "CK14G", "CK14H", "CK14I"),
+model = 7,
+center=2,
+moments=1,
+modelbt=1,
+boot=1000,
+bc=1,
+seed=654321,
+jn=1)
+```
+
+### perce_cr_benefit -\> cr_thinking -\> criminal self-efficacy with crime strategy moderate the path through perce_cr_benefit -\> criminal self-efficacy
+
+```{r}
+process(data = memo_data,#memo_data1,memo_data2
+y="B8",
+x="perce_cr_benefit",
+m=c("cr_thinking"),
+w="cr_strategy",
+cov=c("set_length_ran","C28D","CJ5","perce_cr_cost", "perce_ncr_benefit","continuity_drcr",
+      "drug_freq", "CK6E", "viocr_diver",
+      "bur_freq","rob_freq","tef_freq","car_freq","for_freq","swi_freq",
+      "E1","E3","E2_bina","E4_bina","C17", "D7", "D16", "C23","CK2","left_sen", "serve_sen",
+      "CK14A", "CK14B", "CK14C", "CK14D", "CK14E", "CK14F", "CK14G", "CK14H", "CK14I"),
+model = 7,
+center=2,
+moments=1,
+modelbt=1,
+boot=1000,
+bc=1,
+seed=654321,
+jn=1)
+```
+
+### perce_cr_benefit -\> cr_thinking -\> criminal self-efficacy -\> arrest avoidance with crime strategy moderate the path through perce_cr_benefit -\> criminal self-efficacy
+
+```{r}
+#model 80 
+process(data = memo_data,#memo_data1,memo_data2
+y="CK8",
+x="perce_cr_benefit",
+m=c("cr_thinking", "B8"),
+w="cr_strategy",
+cov=c("set_length_ran","C28D","CJ5","perce_ncr_benefit", "perce_cr_cost","continuity_drcr",
+      "drug_freq", "CK6E", "viocr_diver",
+      "bur_freq","rob_freq","tef_freq","car_freq","for_freq","swi_freq",
+      "E1","E3","E2_bina","E4_bina","C17", "D7", "D16", "C23","CK2","left_sen", "serve_sen", 
+      "CK14A", "CK14B", "CK14C", "CK14D", "CK14E", "CK14F", "CK14G", "CK14H","CK14I"),
+bmatrix=c(1,0,1,1,0,1),
+wmatrix=c(1,0,0,0,0,0),
+center=2,
+moments=1,
+modelbt=1,
+boot=1000,
+bc=1,
+seed=654321,
+jn=1)
+```
+
+# SECTION 6 Appendix
+
+## Appendix 1. Descriptive statistics of 41 variables (including 35 control variables and 6 main variables).
+
+```{r}
+options(digits=2)
+
+library(expss)
+samcor <- sample_memo %>% 
+  select(E1, E2_bina, E3 , E4_bina , C17 , D7, D16, set_length_ran,
+        CK6E , serve_sen, left_sen ,
+        C28D , CJ5, continuity_drcr, C23,
+        CK14A, CK14B, CK14C, CK14D, CK14E, CK14F, CK14G, CK14H, CK14I,
+        drug_freq, bur_freq,rob_freq, tef_freq,car_freq,for_freq, swi_freq, 
+        viocr_diver,
+        CK2, perce_ncr_benefit, perce_cr_cost, 
+        perce_cr_benefit, cr_thinking, B9, B8, CK8, cr_strategy)
+vars <- c("Age", "Race", "Education", "Marriage", "Job in WP3", "Job in WP2", "Job in WP1", "Length of WP3 (month)", "Current incaceration for drug dealing", "Length of sentence served", "Length of sentence left","Drug dealer identity", "No. of arrest for drug dealing" , "Experience in drug dealing", "Drug use in WP3","No. of BT", "No. of HC", "No. of CK", "No. of BUR", "No. of TH", "No. of KI", "No. of FOR", "No. of CAR", "No. of DD","Freq. of DD", "Freq. of BUR","Freq. of ROB","Freq. of TEF","Freq. of CAR","Freq. of FOR", "Freq. of SWI", "No. of violent crime types","Ratio of crime income/total income","PNCB","PCC", "PCB", "CT", "FO", "CSE", "AA", "CS") 
+names(samcor) <- vars
+
+samcor_demo <- samcor %>% 
+  descr(stats = c("n.valid","mean", "sd", "min", "q1", "med", "q3", "max", "skewness", "kurtosis"),
+        transpose = TRUE,
+        order = "preserve")
+samcor_demo
+library(gt)
+samcor_demo_out <- cbind(vars,samcor_demo) %>% 
+  gt() %>% 
+  tab_header("Appendix 1. Descriptive Statistics for the 41 Variables From the Current Study.") %>% 
+  opt_table_font(font = google_font(name = "Times New Roman"), ) %>% 
+  tab_footnote(footnote = "***p<0.001, **p<0.01, *p<0.05") %>% 
+  tab_footnote(footnote = md("_Note_. WP3 = Window period 3, WP2 = Window period 2, WP1 = Window period 1, BT = Beat, HC = Hustled, CK = Cut with knife, BUR = Burglary, TH = Threatened, KI = Kill, FOR = Forge, CAR = Steal a car/car theft, DD = Drug dealing, ROB = robbery, TEF = theft, SWI = Swindle, PNCB = Perceived non-crime benefit, PCC = Perceived crime cost, PCB = Perceived crime benefit, CT = Criminal thinking, FO = Future offending, CES = Criminal self-efficacy, AA = Arrest avoidance, CS = Crime strategy")) %>% 
+  tab_options(table.font.size = px(12)) %>%
+  gtsave(filename = "Appendix_1.rtf")
+```
+
+## Appendix 2. Correlation of 41 variables (including 35 control variables and 6 main variables).
+
+```{r}
+library(rstatix)
+
+cmat <- samcor %>% 
+  cor_mat() %>% 
+  pull_upper_triangle() 
+cmat_sig <- cor_mark_significant(cmat,
+                                 cutpoints = c(0, 0.001, 0.01, 0.05, 1),
+                                 symbols = c("***", "**", "*", ""))
+cmat_sig_out <- cmat_sig %>% 
+  gt() %>% 
+  tab_header("Appendix 2. Correlations for the 41 Variables From the Current Study.") %>% 
+  opt_table_font(font = google_font(name = "Times New Roman"), ) %>% 
+  tab_footnote(footnote = "***p<0.001, **p<0.01, *p<0.05") %>% 
+  tab_footnote(footnote = md("_Note_. WP3 = Window period 3, WP2 = Window period 2, WP1 = Window period 1, BT = Beat, HC = Hustled, CK = Cut with knife, BUR = Burglary, TH = Threatened, KI = Kill, FOR = Forge, CAR = Steal a car/car theft, DD = Drug dealing, ROB = robbery, TEF = theft, SWI = Swindle, PNCB = Perceived non-crime benefit, PCC = Perceived crime cost, PCB = Perceived crime benefit, CT = Criminal thinking, FO = Future offending, CES = Criminal self-efficacy, AA = Arrest avoidance, CS = Crime strategy")) %>% 
+  tab_options(table.font.size = px(12)) %>%
+  gtsave(filename = "Appendix_2.rtf")
+```
